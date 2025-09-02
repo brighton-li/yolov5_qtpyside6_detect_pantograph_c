@@ -1,7 +1,7 @@
 from datetime import datetime
 from PySide6.QtWidgets import (QMainWindow,QWidget, QPushButton, QLabel, QLineEdit,
     QSlider,QPlainTextEdit, QVBoxLayout, QHBoxLayout,QFrame,QFormLayout,QDoubleSpinBox,
-    QComboBox,QTabWidget
+    QComboBox,QTabWidget,QSplitter,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator 
@@ -98,7 +98,7 @@ class Ui_MainWindow(object):
 
         # 右侧检测控制 frame 容器
         self.detect_menu = QFrame()
-        self.detect_menu.setMinimumSize(1000,35)
+        self.detect_menu.setFixedSize(1000,35)
         self.detect_menu.setStyleSheet("""
         QFrame {
             background-color: rgb(230, 206, 140);
@@ -261,9 +261,24 @@ class Ui_MainWindow(object):
         # 曲线所在
         self.tabWidget = QTabWidget(self)
         self.tab1 = QWidget()
-        self.tabWidget.addTab(self.tab1,"page0")
-        self.tabWidget.setMinimumSize(400,480)
-
+        self.tab2 = QWidget()
+        self.tabWidget.addTab(self.tab1,"输出曲线")
+        self.tabWidget.addTab(self.tab2,"位置列表")
+        self.tabWidget.setMinimumSize(200,480)
+        self.tabWidget.setStyleSheet("""
+        QTabBar {
+            text-align:middle;
+            background-color: gray;
+            color: black;                              
+        }
+        QTabBar:hover {
+            background-color: #86919b;                       
+        }
+        QTabBar:pressed {
+            background-color: gray;                                     
+        }                                   
+        """)
+        
         # 检测控制+保存
         self.btn_start_detect = QPushButton("启动检测")
         self.btn_start_detect.setFixedSize(100,20)
@@ -277,7 +292,7 @@ class Ui_MainWindow(object):
 
         # 创建文本框-终端执行情况
         self.plaintext = QPlainTextEdit("执行反馈日志-Results show")
-        self.plaintext.setMinimumSize(1100, 50)
+        self.plaintext.setMinimumSize(1100, 40)
         self.plaintext.setReadOnly(True)  # 设置文本框为只读
         # 设置文本框-终端的CSS样式
         self.plaintext.setStyleSheet("""
@@ -296,13 +311,15 @@ class Ui_MainWindow(object):
         # ---------- 布局与添加控件 ----------
         # 创建布局
         left_layout   = QVBoxLayout()
-        right_layout  = QVBoxLayout()
+        #right_layout  = QVBoxLayout()
+        right_layout  = QSplitter(Qt.Vertical)
         combob_layout = QHBoxLayout() # 实现 combobox 加标签 居中对齐
-        input_layout  = QFormLayout() # 快捷实现 标签+文本
+        #input_layout  = QFormLayout() # 快捷实现 标签+文本
         iou_layout    = QVBoxLayout()
         conf_layout   = QVBoxLayout()
 
-        right_upper_layout = QHBoxLayout()
+        #right_upper_layout = QHBoxLayout()
+        right_upper_layout = QSplitter(Qt.Horizontal)
 
 
         # 设置frame容器加布局
@@ -354,14 +371,18 @@ class Ui_MainWindow(object):
         # --- 右侧布局控件 ---
         right_upper_layout.addWidget(self.label_img)
         right_upper_layout.addWidget(self.tabWidget)
-        right_layout.addLayout(right_upper_layout)
+        right_layout.addWidget(right_upper_layout)
+        #right_layout.addLayout(right_upper_layout)
         #right_layout.addWidget(self.label_img)
 
+        #form布局+容器
+        input_widget = QWidget()
+        input_layout = QFormLayout(input_widget)
         # 输入文件路径
         input_layout.addRow("输入路径：",self.path_line)
         # 权重文件路径
         input_layout.addRow("权重路径：",self.pt_line)
-        right_layout.addLayout(input_layout)
+        right_layout.addWidget(input_widget)
 
         # 检测控制按钮
         detect_layout = QHBoxLayout(self.detect_menu)
@@ -373,9 +394,9 @@ class Ui_MainWindow(object):
 
         # 终端执行文本
         right_layout.addWidget(self.plaintext)
-        right_layout.setSpacing(5)  # 设置布局中部件之间的间距为 5 像素
+        #right_layout.setSpacing(5)  # 设置布局中部件之间的间距为 5 像素
         
         # 添加布局到主布局
         main_layout.addLayout(left_layout)
-        main_layout.addLayout(right_layout)
+        main_layout.addWidget(right_layout)
 
