@@ -2,9 +2,11 @@
 import logging
 import cv2
 import os
+import numpy as np
+import pyqtgraph as pg
 from datetime import datetime
 from PySide6.QtWidgets import (QApplication, QMainWindow, QFileDialog, QMessageBox,
-    QStatusBar, QLabel,QMenuBar,QPlainTextEdit,
+    QStatusBar, QLabel,QMenuBar,QPlainTextEdit, QVBoxLayout
 )
 from PySide6.QtCore import Qt, QTimer, Signal, Slot,QObject
 from PySide6.QtGui import QImage, QIcon, QPixmap
@@ -98,6 +100,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.cap   = None
         self.timer = QTimer()
         self.timer.timeout.connect(self.next_frame)
+        
+        # ---------- 曲线绘制相关变量 ----------
+        # 存储帧号和中心点坐标
+        self.frame_numbers = []
+        self.contact_point_x = []
+        self.contact_point_y = []
+        self.max_points = 1000  # 增加显示点数
+        
+        # 数据持久化存储相关
+        self.data_file = None
+        self.data_writer = None
+        self.is_recording = False
+        
+        # 初始化曲线绘制组件
+        self.init_plot()
         self.iou_timer = QTimer()
         self.iou_timer.setSingleShot(True)
         self.iou_timer.timeout.connect(self._really_log_iou)
@@ -152,6 +169,38 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.init_logging(self.plaintext)
 
         logging.info("日志初始化完成")
+    
+    # ---------- 曲线绘制初始化 ----------
+    def init_plot(self):
+        # 设置pyqtgraph的全局样式
+        pg.setConfigOption('background', 'k')  # 背景黑色
+        pg.setConfigOption('foreground', 'g')  # 前景绿色
+        
+        # 创建两个PlotWidget，一个用于x坐标，一个用于y坐标
+        self.plot_widget_x = pg.PlotWidget()
+        self.plot_widget_y = pg.PlotWidget()
+        
+        # 设置图表标题
+        self.plot_widget_x.setTitle('X 坐标曲线')
+        self.plot_widget_y.setTitle('Y 坐标曲线')
+        
+        # 设置坐标轴标签
+        self.plot_widget_x.setLabel('left', 'X 坐标')
+        self.plot_widget_x.setLabel('bottom', '帧号')
+        self.plot_widget_y.setLabel('left', 'Y 坐标')
+        self.plot_widget_y.setLabel('bottom', '帧号')
+        
+        # 创建曲线对象
+        self.curve_x = self.plot_widget_x.plot(pen=pg.mkPen('g', width=2))
+        self.curve_y = self.plot_widget_y.plot(pen=pg.mkPen('g', width=2))
+        
+        # 创建垂直布局，并添加两个图表
+        plot_layout = QVBoxLayout()
+        plot_layout.addWidget(self.plot_widget_x)
+        plot_layout.addWidget(self.plot_widget_y)
+        
+        # 将布局添加到tab1
+        self.tab1.setLayout(plot_layout)
     
     # ---------- 菜单栏方法实现 ----------
     # 菜单栏的槽函数
@@ -342,6 +391,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def stop_play(self):
         self.timer.stop()
+        # 停止数据记录
+        self.stop_data_recording()
         if self.cap:
             self.cap.release(); self.cap = None
         # 注意对video_play 状态改变
@@ -459,16 +510,223 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     @Slot()
     def start_detection(self):
         """开始/继续检测"""
-        #if not self.cap or not self.cap.isOpened():
-        '''
-        # 通过 disenabled btn 已经规避，所以弃用
-        if self.is_inputed == False:
-            QMessageBox.warning(self, "提示", "请先选择视频/摄像头")
-            return
-        '''
+        # 开始记录数据到文件
+        if not self.is_recording:
+            self.start_data_recording()
+            
         if self.video_play is None and self.is_inputed:
+            # 单一图片检测：只处理图像，不更新曲线
             img = cv2.imread(self.image_path)  # 注意读取图片 而不是输入path给model
-            img_out = self.model.predict(img)  # .predict 就是能否视频推理的关键
+            # 虽然predict方法返回两个值，但我们只关心处理后的图像
+            img_out, _ = self.model.predict(img)  # 忽略contact_points
+            self.show_cv_img(img_out)
+
+
+        else:
+            ret, frame = self.cap.read()
+            if not ret:
+                self.stop_play(); return            
+            if self.detection_running:
+                # 调用 YOLOv5 模型进行推理
+                self.model.conf_thres= self.conf_spinbox.value()
+                self.model.iou_thres= self.iou_spinbox.value()
+                frame = self.model.predict(frame) 
+                self.show_cv_img(frame) 
+
+                pass
+        self.detection_running = True
+        self.detected   = True
+        self.btn_save.setEnabled(True)
+        self.btn_save.setStyleSheet(self.btn_enable_stylesheet)
+        self.btn_start_detect.setEnabled(False)
+        self.btn_start_detect.setStyleSheet(self.btn_disenable_stylesheet)
+        if self.video_play is not None:
+            self.btn_pause_detect.setEnabled(True)
+            self.btn_pause_detect.setStyleSheet(self.btn_enable_stylesheet)
+        logging.info("启动检测")
+        #self.show_results("[INFO] 开始检测（YOLOv5 逻辑待接入）")
+        #print("[INFO] 开始检测（YOLOv5 逻辑待接入）")
+
+
+    @Slot()
+    def pause_detection(self):
+        """暂停检测（视频继续播放，但推理暂停）"""
+        self.detection_running = False
+        logging.info( "暂停检测(逻辑待接入)")
+        #self.show_results("[INFO] 暂停检测")
+        #print("[INFO] 暂停检测")
+        self.btn_start_detect.setEnabled(True)
+        self.btn_start_detect.setStyleSheet(self.btn_enable_stylesheet)
+        self.btn_pause_detect.setEnabled(False)
+        self.btn_pause_detect.setStyleSheet(self.btn_disenable_stylesheet)
+
+    @Slot()
+    def save_result(self):
+        """保存当前帧或整个结果（占位）"""
+        logging.info("保存结果（逻辑待实现）")
+        #self.show_results("[INFO] 保存结果（逻辑待实现）")
+        #print("[INFO] 保存结果（逻辑待实现）")
+        #QMessageBox.information(self, "提示", "保存结果功能待接入")
+
+
+    def update_plot(self):
+        """更新曲线显示"""
+        # 更新x坐标曲线
+        self.curve_x.setData(self.frame_numbers, self.contact_point_x)
+        
+        # 设置X坐标曲线的纵轴自动调整范围，但确保跨度最小为200，最大为400
+        if self.contact_point_x:
+            min_x = min(self.contact_point_x)
+            max_x = max(self.contact_point_x)
+            current_range = max_x - min_x
+            
+            # 确保跨度在200-400之间
+            if current_range < 200:
+                # 跨度太小，扩展到200
+                mid_x = (min_x + max_x) / 2
+                lower_y = mid_x - 100
+                upper_y = mid_x + 100
+            elif current_range > 400:
+                # 跨度太大，限制在400
+                mid_x = (min_x + max_x) / 2
+                lower_y = mid_x - 200
+                upper_y = mid_x + 200
+            else:
+                # 跨度合适，使用当前范围
+                lower_y = min_x
+                upper_y = max_x
+            
+            # 设置Y轴范围
+            self.plot_widget_x.setYRange(lower_y, upper_y)
+        
+        # 设置X坐标曲线的横轴范围，每50为一个大格
+        if self.frame_numbers:
+            max_frame = max(self.frame_numbers)
+            # 计算合适的横轴范围，确保每50为一个大格
+            lower_frame = (max_frame // 50) * 50 - 100  # 显示比当前多2个大格
+            if lower_frame < 0:
+                lower_frame = 0
+            self.plot_widget_x.setXRange(lower_frame, max_frame + 50)
+        # 显示网格线
+        self.plot_widget_x.showGrid(x=True, y=True)
+        # 设置横轴刻度间距为50
+        self.plot_widget_x.getAxis('bottom').setTickSpacing(50, 10)
+        
+        # 更新y坐标曲线
+        self.curve_y.setData(self.frame_numbers, self.contact_point_y)
+        # 设置Y坐标曲线的纵轴跨度固定为100
+        if self.contact_point_y:
+            min_y = min(self.contact_point_y)
+            max_y = max(self.contact_point_y)
+            mid_y = (min_y + max_y) / 2
+            # 跨度固定为100，以中点为中心
+            lower_y = mid_y - 50
+            upper_y = mid_y + 50
+            
+            # 设置Y轴范围
+            self.plot_widget_y.setYRange(lower_y, upper_y)
+        # 设置Y坐标曲线的横轴范围，与X坐标曲线保持一致
+        if self.frame_numbers:
+            max_frame = max(self.frame_numbers)
+            lower_frame = (max_frame // 50) * 50 - 100
+            if lower_frame < 0:
+                lower_frame = 0
+            self.plot_widget_y.setXRange(lower_frame, max_frame + 50)
+        # 显示网格线
+        self.plot_widget_y.showGrid(x=True, y=True)
+        # 设置横轴刻度间距为50
+        self.plot_widget_y.getAxis('bottom').setTickSpacing(50, 10)
+    
+    def show_cv_img(self, cv_img):
+        if cv_img is None: 
+            return
+        rgb = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+        h, w, ch = rgb.shape
+        qt_img = QImage(rgb.data, w, h, ch*w, QImage.Format_RGB888)
+        self.label_img.setPixmap(QPixmap.fromImage(qt_img).scaled(
+            self.label_img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        if self.label_img.pixmap():
+            self.label_img.setPixmap(self.label_img.pixmap().scaled(
+                self.label_img.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+        
+        ...
+
+
+    def start_data_recording(self):
+        """开始将坐标数据记录到CSV文件"""
+        try:
+            # 创建一个带时间戳的文件名
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            self.data_file = f"coordinate_data_{timestamp}.csv"
+            
+            # 创建CSV写入器
+            self.data_writer = open(self.data_file, 'w')
+            # 写入表头
+            self.data_writer.write('frame_number,x_center,y_center\n')
+            
+            self.is_recording = True
+            logging.info(f"开始记录数据到文件: {self.data_file}")
+        except Exception as e:
+            logging.error(f"创建数据文件失败: {str(e)}")
+    
+    def stop_data_recording(self):
+        """停止数据记录并关闭文件"""
+        if self.is_recording and self.data_writer:
+            try:
+                self.data_writer.close()
+                logging.info(f"数据记录已停止，文件已保存: {self.data_file}")
+            except Exception as e:
+                logging.error(f"关闭数据文件失败: {str(e)}")
+            finally:
+                self.is_recording = False
+                self.data_writer = None
+                self.data_file = None
+
+    ''' logging更新太快，有冗余，弃用
+    # iou 滑块值与spinbox 互变统一
+
+    def iou_slider_changed(self, value):
+        iou = value/100.0
+        self.iou_spinbox.setValue(iou)
+        logging.info(f"IOU阈值已变更为{iou}")
+        self.iou_threshold = iou
+    def iou_spinbox_changed(self, value):
+        iou = int(value*100)
+        self.iou_slider.setValue(iou)
+        logging.info(f"IOU阈值已变更为{iou}")
+        self.iou_threshold = iou
+
+    # conf 置信度 滑块值与spinbox 互变统一
+    def conf_slider_changed(self, value):
+        conf = value/100.0
+        self.conf_spinbox.setValue(conf)    
+        logging.info(f"置信度阈值已变更为{conf}")
+        self.conf_threshold = conf
+    def conf_spinbox_changed(self, value):
+        conf = int(value*100)
+        self.conf_slider.setValue(conf)
+        logging.info(f"置信度阈值已变更为{conf}")
+        self.conf_threshold = conf
+    '''        
+    
+
+    # ---------- 检测控制 ----------
+    @Slot()
+    def start_detection(self):
+        """开始/继续检测"""
+        # 开始记录数据到文件
+        if not self.is_recording:
+            self.start_data_recording()
+            
+        if self.video_play is None and self.is_inputed:
+            # 单一图片检测：只处理图像，不更新曲线
+            img = cv2.imread(self.image_path)  # 注意读取图片 而不是输入path给model
+            # 虽然predict方法返回两个值，但我们只关心处理后的图像
+            img_out, _ = self.model.predict(img)  # 忽略contact_points
             self.show_cv_img(img_out)
 
 
@@ -523,14 +781,116 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ret, frame = self.cap.read()
         if not ret:
             self.stop_play(); return
+        
+        # 检测帧号
+        current_frame = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+        
         if self.detection_running:
             # 调用 YOLOv5 模型进行推理
             self.model.conf_thres= self.conf_spinbox.value()
             self.model.iou_thres= self.iou_spinbox.value()
-            frame = self.model.predict(frame)
+            frame, contact_points = self.model.predict(frame) 
+            
+            # 处理contact point信息并更新曲线
+            if contact_points:
+                # 取第一个contact point（如果有多个）
+                x_center, y_center = contact_points[0]
+                
+                # 添加数据点到内存中的列表
+                self.frame_numbers.append(current_frame)
+                self.contact_point_x.append(x_center)
+                self.contact_point_y.append(y_center)
+                
+                # 将数据保存到文件
+                if self.is_recording and self.data_writer:
+                    try:
+                        self.data_writer.write(f'{current_frame},{x_center},{y_center}\n')
+                    except Exception as e:
+                        logging.error(f"写入数据失败: {str(e)}")
+                
+                # 优化数据点管理，确保应用程序响应性
+                if len(self.frame_numbers) > self.max_points:
+                    # 当数据点超过max_points时，采用智能降采样策略
+                    if len(self.frame_numbers) > self.max_points * 1.5:
+                        # 保留最近的max_points个点
+                        self.frame_numbers = self.frame_numbers[-self.max_points:]
+                        self.contact_point_x = self.contact_point_x[-self.max_points:]
+                        self.contact_point_y = self.contact_point_y[-self.max_points:]
+                
+                # 更新曲线显示
+                self.update_plot()
+        
         self.show_cv_img(frame)
 
 
+    def update_plot(self):
+        """更新曲线显示"""
+        # 更新x坐标曲线
+        self.curve_x.setData(self.frame_numbers, self.contact_point_x)
+        
+        # 设置X坐标曲线的纵轴自动调整范围，但确保跨度最小为200，最大为400
+        if self.contact_point_x:
+            min_x = min(self.contact_point_x)
+            max_x = max(self.contact_point_x)
+            current_range = max_x - min_x
+            
+            # 确保跨度在200-400之间
+            if current_range < 200:
+                # 跨度太小，扩展到200
+                mid_x = (min_x + max_x) / 2
+                lower_y = mid_x - 100
+                upper_y = mid_x + 100
+            elif current_range > 400:
+                # 跨度太大，限制在400
+                mid_x = (min_x + max_x) / 2
+                lower_y = mid_x - 200
+                upper_y = mid_x + 200
+            else:
+                # 跨度合适，使用当前范围
+                lower_y = min_x
+                upper_y = max_x
+            
+            # 设置Y轴范围
+            self.plot_widget_x.setYRange(lower_y, upper_y)
+        
+        # 设置X坐标曲线的横轴范围，每50为一个大格
+        if self.frame_numbers:
+            max_frame = max(self.frame_numbers)
+            # 计算合适的横轴范围，确保每50为一个大格
+            lower_frame = (max_frame // 50) * 50 - 100  # 显示比当前多2个大格
+            if lower_frame < 0:
+                lower_frame = 0
+            self.plot_widget_x.setXRange(lower_frame, max_frame + 50)
+        # 显示网格线
+        self.plot_widget_x.showGrid(x=True, y=True)
+        # 设置横轴刻度间距为50
+        self.plot_widget_x.getAxis('bottom').setTickSpacing(50, 10)
+        
+        # 更新y坐标曲线
+        self.curve_y.setData(self.frame_numbers, self.contact_point_y)
+        # 设置Y坐标曲线的纵轴跨度固定为100
+        if self.contact_point_y:
+            min_y = min(self.contact_point_y)
+            max_y = max(self.contact_point_y)
+            mid_y = (min_y + max_y) / 2
+            # 跨度固定为100，以中点为中心
+            lower_y = mid_y - 50
+            upper_y = mid_y + 50
+            
+            # 设置Y轴范围
+            self.plot_widget_y.setYRange(lower_y, upper_y)
+        # 设置Y坐标曲线的横轴范围，与X坐标曲线保持一致
+        if self.frame_numbers:
+            max_frame = max(self.frame_numbers)
+            lower_frame = (max_frame // 50) * 50 - 100
+            if lower_frame < 0:
+                lower_frame = 0
+            self.plot_widget_y.setXRange(lower_frame, max_frame + 50)
+        # 显示网格线
+        self.plot_widget_y.showGrid(x=True, y=True)
+        # 设置横轴刻度间距为50
+        self.plot_widget_y.getAxis('bottom').setTickSpacing(50, 10)
+    
     def show_cv_img(self, cv_img):
         if cv_img is None: 
             return

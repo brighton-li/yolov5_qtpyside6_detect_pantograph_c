@@ -32,10 +32,11 @@ class Ui_MainWindow(object):
         statusbar.showMessage("已就绪",5000)
         statusbar.setFixedHeight(15)
 
-        # 中心
+        # 中心容器
         central = QWidget(); 
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
         # 左侧 选择文件 Frame 容器
         self.left_menu = QFrame()
@@ -64,7 +65,7 @@ class Ui_MainWindow(object):
         
         # 左侧 设置 frame 容器
         self.setting_menu = QFrame()
-        self.setting_menu.setMinimumSize(150,220)
+        self.setting_menu.setFixedSize(150,220)
         self.setting_menu.setStyleSheet("""
         QFrame {
             background-color: rgb(75, 196, 188);
@@ -98,7 +99,8 @@ class Ui_MainWindow(object):
 
         # 右侧检测控制 frame 容器
         self.detect_menu = QFrame()
-        self.detect_menu.setFixedSize(1000,35)
+        self.detect_menu.setMinimumWidth(1000)
+        self.detect_menu.setFixedHeight(35)
         self.detect_menu.setStyleSheet("""
         QFrame {
             background-color: rgb(230, 206, 140);
@@ -185,7 +187,7 @@ class Ui_MainWindow(object):
         '''
         # 权重加载
         self.btn_load_pt = QPushButton('切换权重')
-        self.btn_load_pt.setMinimumSize(80,30)
+        self.btn_load_pt.setFixedSize(150,30)
         self.btn_load_pt.setStyleSheet("""
         QPushButton {
             text-align:middle;
@@ -210,8 +212,8 @@ class Ui_MainWindow(object):
 
         # 参数设置
         self.label_setting = QLabel("阈值设置")
-        self.label_setting.setAlignment(Qt.AlignCenter)  # 文本居中对齐
-        self.label_setting.setFixedSize(80, 40)
+        #self.label_setting.setAlignment(Qt.AlignCenter)  # 文本居中对齐
+        self.label_setting.setFixedSize(150, 40)
         self.label_setting.setStyleSheet("color: black; font : 12px; ")
         
         # 置信度阈值
@@ -292,7 +294,7 @@ class Ui_MainWindow(object):
 
         # 创建文本框-终端执行情况
         self.plaintext = QPlainTextEdit("执行反馈日志-Results show")
-        self.plaintext.setMinimumSize(1100, 40)
+        self.plaintext.setMinimumSize(1100, 80)
         self.plaintext.setReadOnly(True)  # 设置文本框为只读
         # 设置文本框-终端的CSS样式
         self.plaintext.setStyleSheet("""
@@ -313,6 +315,11 @@ class Ui_MainWindow(object):
         left_layout   = QVBoxLayout()
         #right_layout  = QVBoxLayout()
         right_layout  = QSplitter(Qt.Vertical)
+        right_layout.setStyleSheet("QSplitter::handle { background-color: white; " \
+        "border:1 px solid gray }")
+        right_layout.setChildrenCollapsible(False)   # 禁止子控件被折叠
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
         combob_layout = QHBoxLayout() # 实现 combobox 加标签 居中对齐
         #input_layout  = QFormLayout() # 快捷实现 标签+文本
         iou_layout    = QVBoxLayout()
@@ -320,7 +327,11 @@ class Ui_MainWindow(object):
 
         #right_upper_layout = QHBoxLayout()
         right_upper_layout = QSplitter(Qt.Horizontal)
+        right_lower_widget = QWidget()
+        right_lower_layout = QVBoxLayout(right_lower_widget)
+        right_lower_layout.setContentsMargins(0, 0, 0, 0)
 
+        
 
         # 设置frame容器加布局
         left_menu_layout = QVBoxLayout(self.left_menu)
@@ -365,7 +376,7 @@ class Ui_MainWindow(object):
         #left_layout.addWidget(self.btn_switch_lang)
         left_layout.addWidget(self.btn_load_pt)
         left_layout.addWidget(self.label_setting)
-        left_layout.addWidget(self.setting_menu,alignment=Qt.AlignHCenter)
+        left_layout.addWidget(self.setting_menu,alignment=Qt.AlignLeft)
 
 
         # --- 右侧布局控件 ---
@@ -382,7 +393,7 @@ class Ui_MainWindow(object):
         input_layout.addRow("输入路径：",self.path_line)
         # 权重文件路径
         input_layout.addRow("权重路径：",self.pt_line)
-        right_layout.addWidget(input_widget)
+        right_lower_layout.addWidget(input_widget)
 
         # 检测控制按钮
         detect_layout = QHBoxLayout(self.detect_menu)
@@ -390,12 +401,13 @@ class Ui_MainWindow(object):
         detect_layout.addWidget(self.btn_pause_detect)
         detect_layout.addWidget(self.btn_save)
         # 添加 检测控制 frame容器
-        right_layout.addWidget(self.detect_menu)
+        right_lower_layout.addWidget(self.detect_menu)
 
         # 终端执行文本
-        right_layout.addWidget(self.plaintext)
+        right_lower_layout.addWidget(self.plaintext)
         #right_layout.setSpacing(5)  # 设置布局中部件之间的间距为 5 像素
         
+        right_layout.addWidget(right_lower_widget)
         # 添加布局到主布局
         main_layout.addLayout(left_layout)
         main_layout.addWidget(right_layout)

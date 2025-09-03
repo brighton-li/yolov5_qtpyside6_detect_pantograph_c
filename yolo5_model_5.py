@@ -54,7 +54,7 @@ class YOLOv5Model:
 
     @torch.no_grad()
     def predict(self, img_bgr):
-        """输入 OpenCV BGR，返回画好框的 BGR"""
+        """输入 OpenCV BGR，返回画好框的 BGR 和检测结果信息"""
         import time
         
         # 记录开始时间
@@ -94,13 +94,22 @@ class YOLOv5Model:
 
         # 3. 后处理并画框
         det = pred[0]
+        contact_points = []
         if len(det):
             det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img_bgr.shape).round()
             for *xyxy, conf, cls in reversed(det):
                 label = f'{self.names[int(cls)]} {conf:.2f}'
                 self._plot_one_box(xyxy, img_bgr, label=label,
                                    color=(100, 160, 0), line_thickness=2)
-        return img_bgr
+                
+                # 提取contact point的中心点坐标
+                if self.names[int(cls)] == 'contact point':
+                    x_center = (xyxy[0] + xyxy[2]) / 2
+                    y_center = (xyxy[1] + xyxy[3]) / 2
+                    contact_points.append((float(x_center), float(y_center)))
+        
+        # 返回画好框的图像和contact point信息
+        return img_bgr, contact_points
 
     @staticmethod
     def _plot_one_box(xyxy, img, color, label=None, line_thickness=3):
