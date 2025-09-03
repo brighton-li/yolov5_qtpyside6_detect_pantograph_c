@@ -5,10 +5,12 @@ logs/
 models/
 old_version/
 test
+*test*
 utils/
 weights/
 *.css
 *.jpg
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
