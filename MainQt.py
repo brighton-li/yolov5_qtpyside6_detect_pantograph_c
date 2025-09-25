@@ -181,14 +181,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.plot_widget_y = pg.PlotWidget()
         
         # 设置图表标题
-        self.plot_widget_x.setTitle('X 坐标曲线')
-        self.plot_widget_y.setTitle('Y 坐标曲线')
+        self.plot_widget_x.setTitle('横向曲线')
+        self.plot_widget_y.setTitle('纵向曲线')
         
         # 设置坐标轴标签
-        self.plot_widget_x.setLabel('left', 'X 坐标')
+        self.plot_widget_x.setLabel('left', '')
         self.plot_widget_x.setLabel('bottom', '帧号')
-        self.plot_widget_y.setLabel('left', 'Y 坐标')
+        self.plot_widget_y.setLabel('left', '')
         self.plot_widget_y.setLabel('bottom', '帧号')
+        
+        # 设置横轴刻度间距为50，确保初始状态就是50为一大格
+        self.plot_widget_x.getAxis('bottom').setTickSpacing(50, 10)
+        self.plot_widget_y.getAxis('bottom').setTickSpacing(50, 10)
+        
+        # 设置初始横轴范围（0-100），确保从一开始就以50为一大格显示
+        self.plot_widget_x.setXRange(0, 100)
+        self.plot_widget_y.setXRange(0, 100)
+        
+        # 显示网格线
+        self.plot_widget_x.showGrid(x=True, y=True)
+        self.plot_widget_y.showGrid(x=True, y=True)
         
         # 创建曲线对象
         self.curve_x = self.plot_widget_x.plot(pen=pg.mkPen('g', width=2))
